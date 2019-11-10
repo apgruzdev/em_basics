@@ -10,8 +10,8 @@ numpy = "*"
 scipy = "*"
 pandas = "*"
 matplotlib = "*"
-plotly = "*"
 scikit-learn = "*"
+ipykernel = "*"
 
 [requires]
 python_version = "3.7"
