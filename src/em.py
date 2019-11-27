@@ -205,7 +205,7 @@ plot_mixture(samples=em.samples, gauss_first=em.gauss_first, gauss_second=em.gau
              gamma=em.gamma, colors=em.hist['w_first'][-1])
 
 # For earlier iterations
-it = 2
+it = 19
 plot_mixture(samples=em.samples, gauss_first=em.hist['gauss_first'][it], gauss_second=em.hist['gauss_second'][it], 
              gamma=em.hist['gamma'][it], colors=em.hist['w_first'][it])
 
@@ -224,20 +224,21 @@ first_subsamp = samples_stack[first_mask]
 
 # #### QQ plot
 
+# +
 first_samples_qs = np.quantile(first_subsamp, q=qs)
 first_gauss_qs = stats.norm.ppf(q=qs, loc=em.gauss_first.mu, scale=em.gauss_first.sigma)
 
 qq_plot(first_samples_qs, first_gauss_qs)
 
 metrics.r2_score(y_true=first_samples_qs, y_pred=first_gauss_qs)  # here will be better results
+# -
 
 # #### Normality Tests
 
+# +
 _, p = stats.shapiro(first_subsamp)
 
 if p > alpha:
 	print('Fail to reject H0 => normal distribution')
 else:
 	print('Reject H0 => "not" normal distribution')
-
-
