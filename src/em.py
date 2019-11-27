@@ -1,7 +1,7 @@
 # # Imports
 
 from dataclasses import dataclass
-from typing import Iterable, Tuple, Union
+from typing import Iterable, Tuple, Union, Optional
 
 from tqdm import tqdm
 
@@ -60,25 +60,31 @@ plt.plot(bins, prob_one_gauss, color='r', linewidth=2)
 plt.grid(True)
 plt.show()
 
-# ## QQ plot, "graphical" hypothesis testing
+# ### QQ plot, "graphical" hypothesis testing
 
 qs = [i/20 for i in range(1, 20)]
 samples_qs = np.quantile(samples_stack, q=qs)
 gauss_qs = stats.norm.ppf(q=qs, loc=mu, scale=sigma)  # percent point function
 
-max_val = max(np.concatenate([samples_qs, gauss_qs]))
-plt.plot([0, max_val], [0, max_val])
-plt.scatter(x=gauss_qs, y=samples_qs, color='r')
-plt.xlabel('theoretical quantiles')
-plt.ylabel('sample quantiles')
-plt.grid()
-plt.show()
+
+def qq_plot(samples_qs: Iterable[float], gauss_qs: Iterable[float]) -> None:
+    """QQ plotter"""
+    max_val = max(np.concatenate([samples_qs, gauss_qs]))
+    plt.plot([0, max_val], [0, max_val])
+    plt.scatter(x=gauss_qs, y=samples_qs, color='r')
+    plt.xlabel('theoretical quantiles')
+    plt.ylabel('sample quantiles')
+    plt.grid()
+    plt.show()
+
+
+qq_plot(samples_qs, gauss_qs)
 
 metrics.r2_score(y_true=samples_qs, y_pred=gauss_qs)
 
-# ## Normality Tests
+# ### Normality Tests
 
-# ### Shapiro-Wilk Test
+# #### Shapiro-Wilk Test
 
 # H0: samples_stack came from a normally distributed population
 
@@ -115,12 +121,13 @@ class TwoGaussEM:
         self.hist = {'log_likelihood': [], 
                      'gauss_first': [], 
                      'gauss_second': [],
-                     'gamma': []}
+                     'gamma': [],
+                     'w_first': []}
         
     def partial_pdf(self, sample: Union[float, Iterable[float]]) -> Tuple[GaussParam, GaussParam]:
         """Probability Density Function (PDF) for each gaussian"""
-        pdf_first = self.gamma * stats.norm.pdf(x=sample, loc=self.gauss_first.mu, scale=self.gauss_first.sigma)
-        pdf_second = (1. - self.gamma) * stats.norm.pdf(x=sample, loc=self.gauss_second.mu, scale=self.gauss_second.sigma)
+        pdf_first = stats.norm.pdf(x=sample, loc=self.gauss_first.mu, scale=self.gauss_first.sigma)
+        pdf_second = stats.norm.pdf(x=sample, loc=self.gauss_second.mu, scale=self.gauss_second.sigma)
         return pdf_first, pdf_second
     
     def pdf(self, sample: Union[float, Iterable[float]]) -> GaussParam:
@@ -136,6 +143,7 @@ class TwoGaussEM:
 
         w_first = pdf_first / denominator
         w_second = np.ones_like(w_first) - w_first
+        self.hist['w_first'].append(w_first)  # logging
 
         return w_first, w_second
             
@@ -166,11 +174,70 @@ class TwoGaussEM:
             self.one_iter()
 
 
+def plot_mixture(samples: Iterable[float], gauss_first: GaussParam, gauss_second: GaussParam, gamma: float, 
+             colors: Optional[Iterable[float]] = None, bins_num: int = 50) -> None:
+    """Plot results for gaussian mixture model"""
+    _, bins, _ = plt.hist(samples, bins=bins_num, alpha=0.75, density=True)
+
+    prob_first = gamma * stats.norm.pdf(x=bins, loc=gauss_first.mu, scale=gauss_first.sigma)
+    prob_second = (1. - gamma) * stats.norm.pdf(x=bins, loc=gauss_second.mu, scale=gauss_second.sigma)
+    plt.plot(bins, prob_first, color='lime', linewidth=3)
+    plt.plot(bins, prob_second, color='b', linewidth=3)
+
+    plt.plot(bins, prob_first + prob_second, '--', linewidth=2, color='red')
+
+    if colors is not None:
+        plt.scatter(samples, (np.zeros_like(samples) - 0.01), c=colors, marker='|', cmap='winter')
+
+    plt.grid(True)
+    plt.show()
+
+
 # launch
 em = TwoGaussEM(samples=samples_stack)
 em.launch(iter_num=20)
 
 # results
 em.gauss_first, em.gauss_second
+
+# Result plot
+plot_mixture(samples=em.samples, gauss_first=em.gauss_first, gauss_second=em.gauss_second, 
+             gamma=em.gamma, colors=em.hist['w_first'][-1])
+
+# For earlier iterations
+it = 2
+plot_mixture(samples=em.samples, gauss_first=em.hist['gauss_first'][it], gauss_second=em.hist['gauss_second'][it], 
+             gamma=em.hist['gamma'][it], colors=em.hist['w_first'][it])
+
+# how to split samples
+plt.scatter(samples_stack, em.hist['w_first'][-1])
+plt.plot([-5, 25], [0.5, 0.5], color='red')
+plt.grid(True)
+plt.show()
+
+# ### Consider the first gaussian
+
+# (for the second everything will be the same)
+
+first_mask = (em.hist['w_first'][-1] > 0.5)  # here can be "<"
+first_subsamp = samples_stack[first_mask]
+
+# #### QQ plot
+
+first_samples_qs = np.quantile(first_subsamp, q=qs)
+first_gauss_qs = stats.norm.ppf(q=qs, loc=em.gauss_first.mu, scale=em.gauss_first.sigma)
+
+qq_plot(first_samples_qs, first_gauss_qs)
+
+metrics.r2_score(y_true=first_samples_qs, y_pred=first_gauss_qs)  # here will be better results
+
+# #### Normality Tests
+
+_, p = stats.shapiro(first_subsamp)
+
+if p > alpha:
+	print('Fail to reject H0 => normal distribution')
+else:
+	print('Reject H0 => "not" normal distribution')
 
 
